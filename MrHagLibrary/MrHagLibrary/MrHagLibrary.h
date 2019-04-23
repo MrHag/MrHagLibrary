@@ -690,6 +690,44 @@ public:
 
 	}
 
+	void insert(T c, unsigned int a)
+	{
+
+		if (a < len)
+		{
+			Marray tmp(1);
+
+			tmp = *this;
+
+			delete[] v;
+			v = new T[len+1];
+			for (int i = 0, j = 0; i < len+1; i++)
+			{
+				if (i == a)
+				{
+
+					v[i] = c;
+
+				}
+				else
+				{
+
+					v[i] = tmp[j];
+					j++;
+
+				}
+
+
+
+			}
+
+			len++;
+		}
+
+	}
+
+
+
 	//friend ostream& operator<<(ostream& cout, Marray<T>& a);
 	~Marray()
 	{
