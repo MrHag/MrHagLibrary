@@ -6,6 +6,7 @@
 #include <string.h>
 #include <vector>
 #include <windows.h>
+#include <fstream>
 
 
 
@@ -165,7 +166,7 @@ namespace Cursor
 
 
 //Повертає массив розміру вікна консолі в символах
-int *GetConsoleMaxBuf()
+int *GetConsoleCurrentSize()
 {
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
 	int columns, rows;
@@ -173,32 +174,112 @@ int *GetConsoleMaxBuf()
 	GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
 	columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
 	rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-	std::cout << columns << "  " << rows;
+	std::cout << csbi.dwMaximumWindowSize.X<<std::endl;
+	std::cout << csbi.dwMaximumWindowSize.Y;
 	int arr[2] = { columns,rows };
 	return arr;
 }
 
-class GetConsoleMaxBuf
-{
-public:
 
-	static int X()
+int *GetConsoleMaxSize()
+{
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	int columns, rows;
+
+	GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+	columns = csbi.dwMaximumWindowSize.X;
+	rows = csbi.dwMaximumWindowSize.Y;
+	int arr[2] = { columns,rows };
+	return arr;
+}
+
+
+
+
+void clear() {
+	COORD topLeft = { 0, 0 };
+	HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_SCREEN_BUFFER_INFO screen;
+	DWORD written;
+
+	GetConsoleScreenBufferInfo(console, &screen);
+	FillConsoleOutputCharacterA(
+		console, ' ', screen.dwSize.X * screen.dwSize.Y, topLeft, &written
+	);
+	FillConsoleOutputAttribute(
+		console, FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE,
+		screen.dwSize.X * screen.dwSize.Y, topLeft, &written
+	);
+	SetConsoleCursorPosition(console, topLeft);
+}
+
+
+
+//Зчитування та запис в консоль
+
+struct ConsoleManipulate
+{
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+
+	ConsoleManipulate()
 	{
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		int rows;
+	
 		GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-		rows = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-		return rows;
+	
 	}
-	static int Y()
+	std::string Read_console()
 	{
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		int columns;
-		GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-		columns = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-		return columns;
+		
+
+		COORD coord = { 0,0 };
+		DWORD len;
+
+		//std::cout << "My string???" << std::endl;
+		
+		char* buffer = new char[csbi.dwSize.X*csbi.dwSize.Y + 1];//Выделяем память для буфера
+		ReadConsoleOutputCharacter(GetStdHandle(STD_OUTPUT_HANDLE), buffer, csbi.dwSize.X*csbi.dwSize.Y, coord, &len);//Пишем в буфер
+		std::string str = buffer;
+		delete[] buffer;
+
+		return str;
 	}
+	void Write_console(char* buffer)
+	{
+
+
+		COORD coord = { 0,0 };
+		DWORD len;
+
+		WriteConsoleOutputCharacter(GetStdHandle(STD_OUTPUT_HANDLE), buffer, strlen(buffer), coord, &len);//Пишем из буфера в консоль
+		Cursor::SetCursorPos(GetStdHandle(STD_OUTPUT_HANDLE), csbi.dwCursorPosition);
+	}
+
 };
+
+enum MessageBox_types { Error, Question, Warning, Information };
+
+void MessageBox_Show(char* Content, char* caption, MessageBox_types type)
+{
+	UINT t;
+
+	switch (type)
+	{
+	case MessageBox_types::Error:t = MB_ICONERROR; break;
+	case MessageBox_types::Question:t = MB_ICONQUESTION; break;
+	case MessageBox_types::Warning:t = MB_ICONWARNING; break;
+	case MessageBox_types::Information:t = MB_ICONINFORMATION; break;
+	default:t = MB_ICONINFORMATION;
+	}
+
+	MessageBoxA(GetForegroundWindow(), Content, caption, t);
+
+}
+
+
+
+
+
+
 
 
 
@@ -214,23 +295,23 @@ public:
 	char *b;
 	int pos;
 	int pre_size;
-	void write(char **out = (char **)' ', const char *pre_str = "")
+	ConsoleManipulate cons;
+	void write(std::string* out, const char *pre_str = "")
 	{
 		int CP = GetConsoleCP();
 		SetConsoleCP(1251);
 		//SetConsoleOutputCP(1251);
 
-
+		std::string buffer = cons.Read_console();
 
 
 		b = new char[1];
 		b[0] = '\0';
 
 		count = 1;
-		pre_size = 0;
+		pre_size = strlen(pre_str);
 		pos = 0;
-		for (; pre_str[pre_size] != '\0'; pre_size++) {}
-
+		print(pre_str);
 		char a = _getch();
 		while (a != 13)
 		{
@@ -293,34 +374,37 @@ public:
 				}
 			}
 
+			print(pre_str);
+
 			a = _getch();
 		}
-		if (out != (char **)' ')
-		{
+
 			set(out);
 
-		}
 
-
+			cons.Write_console((char*)buffer.c_str());
 		SetConsoleCP(CP);
 		_getch();
 	}
 
 
-
-	void Delete()
+	void print(const char* pre_str)
 	{
-		delete[] b;
+	
+		clear();
+		SetConsoleCP(866);
+		std::cout << pre_str;
+		std::cout << b;
+		int y = (int)((pos + pre_size) / GetConsoleMaxSize()[0]);
+		Cursor::SetCursorPos((pos + pre_size) - y * GetConsoleMaxSize()[0], y);
+		SetConsoleCP(1251);
+	
 	}
+	
 
-	void set(char **to)
+	void set(std::string* to)
 	{
-		delete[] * to;
-		*to = new char[count];
-		for (int i = 0; i < count; i++)
-		{
-			(*to)[i] = b[i];
-		}
+		*to = b;
 	}
 	char* resize(char *bi, int s)
 	{
@@ -375,7 +459,14 @@ public:
 		}
 	}
 
-
+	~Write()
+	{
+		if (b)
+		{
+			delete[] b;
+		}
+	
+	}
 };
 
 
@@ -399,344 +490,442 @@ int size_char_string(char *string)
 
 
 
-//Прототип динамічного масиву
-template<typename T>
-class Marray
-{
-
-private:
-
-	T* v;
-	int len;
-	bool destroy;
-
-public:
-
-	Marray(int a = 1)
+	//Прототип динамічного масиву
+	template<typename T>
+	class Marray
 	{
-		destroy = true;
-		len = a;
-		v = new T[len];
+
+	private:
+
+		T* v;
+		int len;
+		bool destroy;
+
+	public:
 
 
-
-	}
-
-	Marray* operator +(Marray a)
-	{
-		a.destroy = false;
-		int tmp_len = (len > a.len) ? a.len : len;
-
-		Marray *n = new Marray(tmp_len);
-		for (int i = 0; i < tmp_len; i++)
+		Marray(int a = 1)
 		{
-			n->v[i] = v[i] + a.v[i];
-		}
-		n->len = len;
 
-
-		return n;
-	}
-
-	Marray* operator +(T a)
-	{
-		a.destroy = false;
-		Marray* n = new Marray(len);
-		n->destroy = false;
-		for (int i = 0; i < len; i++)
-			n->v[i] = v[i] + a;
-
-
-
-		return n;
-	}
-
-	void operator ++(int)
-	{
-		for (int i = 0; i < len; i++)
-			v[i] = v[i] + 1;
-	}
-	Marray* operator *(Marray a)
-	{
-		a.destroy = false;
-		int tmp_len = (len > a.len) ? a.len : len;
-
-		Marray *n = new Marray(tmp_len);
-		for (int i = 0; i < tmp_len; i++)
-			n->v[i] = v[i] * a.v[i];
-
-
-
-		return n;
-	}
-
-	Marray* operator *(T a)
-	{
-		a.destroy = false;
-		Marray *n = new Marray(len);
-		n.destroy = false;
-		for (int i = 0; i < len; i++)
-			n->v[i] = v[i] * a;
-
-
-
-		return n;
-	}
-
-	Marray* operator /(Marray a)
-	{
-		a.destroy = false;
-		int tmp_len = (len > a.len) ? a.len : len;
-
-		Marray *n = new Marray(tmp_len);
-		n->destroy = false;
-
-		for (int i = 0; i < tmp_len; i++)
-		{
-			n->v[i] = v[i] / a.v[i];
-		}
-
-
-
-		return n;
-	}
-
-	Marray* operator /(T a)
-	{
-		Marray *n = new Marray(len);
-		n.destroy = false;
-		for (int i = 0; i < len; i++)
-		{
-			n->v[i] = v[i] / a;
-		}
-
-
-
-		return n;
-	}
-
-	void operator =(Marray* a)
-	{
-		delete[] v;
-		v = a->v;
-		len = a->len;
-	}
-
-	void operator =(Marray a)
-	{
-		a.destroy = false;
-		delete[] v;
-		v = new T[a.len];
-
-		for (int i = 0; i < a.len; i++)
-			v[i] = a.v[i];
-
-		len = a.len;
-	}
-
-	void operator =(int a)
-	{
-		if (a != 0)
-		{
-			int min_len = (len > a) ? a : len;
-			Marray tmp(1);
-
-			tmp = *this;
-
-			delete[] v;
-			v = new T[a];
-
-			for (int i = 0; i < min_len; i++)
-				v[i] = tmp.v[i];
+			destroy = false;
 			len = a;
-		}
-	}
+			v = new T[len];
 
-	bool operator ==(Marray a)
-	{
-		a.destroy = false;
-		if (len != a.len)
-			return false;
-		for (int i = 0; i < len; i++)
+		}
+
+
+		Marray(Marray<T>* a)
 		{
 
-			if (v[i] != a[i])
+			v = a->v;
+			len = a->len;
+			destroy = a->destroy;
+
+		}
+
+
+
+		Marray(Marray<T> &a)
+		{
+
+			v = new T[a.len];
+
+			for (int i = 0; i < a.len; i++)
+				v[i] = a.v[i];
+
+			len = a.len;
+
+			destroy = a.destroy;
+
+		}
+
+
+		Marray& operator + (Marray &a)
+		{
+
+			int tmp_len = (len > a.len) ? a.len : len;
+
+			Marray *n = new Marray(tmp_len);
+			for (int i = 0; i < tmp_len; i++)
+			{
+				n->v[i] = v[i] + a.v[i];
+			}
+			n->len = len;
+			n->destroy = true;
+			Marray& k = *n;
+
+
+			delete_if_destroy(&a);
+			delete_if_destroy(this);
+
+			return k;
+
+		}
+
+
+		Marray& operator + (T &a)
+		{
+
+			Marray* n = new Marray(len);
+			for (int i = 0; i < len; i++)
+				n->v[i] = v[i] + a;
+
+			n->destroy = true;
+			Marray& k = *n;
+			delete_if_destroy(this);
+
+			return k;
+		}
+
+		void operator ++(int)
+		{
+
+			add_size(1);
+
+		}
+
+		Marray& operator * (Marray &a)
+		{
+			int tmp_len = (len > a.len) ? a.len : len;
+
+			Marray *n = new Marray(tmp_len);
+			for (int i = 0; i < tmp_len; i++)
+				n->v[i] = v[i] * a.v[i];
+
+			n->destroy = true;
+			Marray& k = *n;
+
+
+			delete_if_destroy(&a);
+			delete_if_destroy(this);
+
+			return k;
+		}
+
+		Marray& operator *(T &a)
+		{
+
+			Marray *n = new Marray(len);
+			n.destroy = false;
+			for (int i = 0; i < len; i++)
+				n->v[i] = v[i] * a;
+
+			n->destroy = true;
+			Marray& k = *n;
+
+
+			delete_if_destroy(this);
+
+			return k;
+		}
+
+		Marray& operator /(Marray &a)
+		{
+
+			int tmp_len = (len > a.len) ? a.len : len;
+
+			Marray *n = new Marray(tmp_len);
+			n->destroy = false;
+
+			for (int i = 0; i < tmp_len; i++)
+			{
+				n->v[i] = v[i] / a.v[i];
+			}
+
+			n->destroy = true;
+			Marray& k = *n;
+
+			delete_if_destroy(&a);
+			delete_if_destroy(this);
+
+			return k;
+
+		}
+
+
+		Marray& operator / (T &a)
+		{
+
+			Marray *n = new Marray(len);
+			for (int i = 0; i < len; i++)
+			{
+				n->v[i] = v[i] / a;
+			}
+
+			n->destroy = true;
+			Marray& k = *n;
+
+			delete_if_destroy(this);
+
+			return k;
+		}
+
+		void operator = (Marray* a)
+		{
+			if (v)
+				delete[] v;
+			v = a->v;
+			len = a->len;
+			destroy = a->destroy;
+		}
+
+
+
+
+
+
+		void operator = (Marray &a)
+		{
+
+			if (v)
+				delete[] v;
+			v = new T[a.len];
+
+			for (int i = 0; i < a.len; i++)
+				v[i] = a.v[i];
+
+			len = a.len;
+
+			delete_if_destroy(&a);
+
+		}
+
+
+		void operator = (int a)
+		{
+
+			if (a != 0)
+			{
+				int min_len = (len > a) ? a : len;
+				Marray tmp(1);
+
+				tmp = *this;
+
+				delete[] v;
+				v = new T[a];
+
+				for (int i = 0; i < min_len; i++)
+					v[i] = tmp.v[i];
+				len = a;
+			}
+
+		}
+
+		bool operator ==(Marray &a)
+		{
+
+			if (len != a.len)
 				return false;
+			for (int i = 0; i < len; i++)
+			{
 
-		}
-		return true;
+				if (v[i] != a[i])
+					return false;
 
-	}
-
-	bool operator !=(Marray a)
-	{
-		a.destroy = false;
-		if (len != a.len)
+			}
 			return true;
-		for (int i = 0; i < len; i++)
+
+		}
+
+		bool operator !=(Marray &a)
 		{
 
-			if (v[i] == a[i])
-			{
-			}
-			else
+			if (len != a.len)
 				return true;
-
-		}
-		return false;
-
-	}
-
-	T& operator [](unsigned int a)
-	{
-
-		try //код, который может привести к ошибке, располагается тут
-		{
-			if (a >= len)
+			for (int i = 0; i < len; i++)
 			{
-				throw a;
-			}
-			return v[a];
-		}
-		catch (unsigned int a)
-		{
-			std::cout << a << " - Индекс вышел за пределы памяти ( " << 0 << " - " << len - 1 << " )" << endl;
-		}
 
-
-	}
-
-
-	int get_len()
-	{
-
-		return len;
-
-	}
-
-	T* get_var()
-	{
-
-		return v;
-
-	}
-
-	void set_var(T a, int i)
-	{
-
-		v[i] = a;
-
-	}
-
-	void add_size(int a)
-	{
-		int tmp_len = len + a;
-		int min_len = (len > len + a) ? len + a : len;
-		Marray tmp(1);
-
-		tmp = *this;
-
-		delete[] v;
-		v = new T[tmp_len];
-
-		for (int i = 0; i < min_len; i++)
-			v[i] = tmp.v[i];
-		len = tmp_len;
-
-	}
-
-	void set_size(unsigned int a)
-	{
-		if (a != 0)
-		{
-			int min_len = (len > a) ? a : len;
-			Marray tmp(1);
-
-			tmp = *this;
-
-			delete[] v;
-			v = new T[a];
-
-			for (int i = 0; i < min_len; i++)
-				v[i] = tmp.v[i];
-			len = a;
-		}
-
-	}
-
-	void outsert(unsigned int a)
-	{
-
-		if (a < len)
-		{
-			Marray tmp(1);
-
-			tmp = *this;
-
-			delete[] v;
-			v = new T[len - 1];
-			for (int i = 0, j = 0; i < len; i++)
-			{
-				if (i != a)
+				if (v[i] == a[i])
 				{
-					v[j++] = tmp[i];
-				}
-
-			}
-			len--;
-
-
-		}
-
-	}
-
-	void insert(T c, unsigned int a)
-	{
-
-		if (a < len)
-		{
-			Marray tmp(1);
-
-			tmp = *this;
-
-			delete[] v;
-			v = new T[len+1];
-			for (int i = 0, j = 0; i < len+1; i++)
-			{
-				if (i == a)
-				{
-
-					v[i] = c;
-
 				}
 				else
-				{
+					return true;
 
-					v[i] = tmp[j];
-					j++;
+			}
+			return false;
+
+		}
+
+		T& operator [](unsigned int a)
+		{
+
+			try
+			{
+				if (a >= len)
+				{
+					throw a;
+				}
+				return v[a];
+			}
+			catch (unsigned int a)
+			{
+				std::cout << a << " - Индекс вышел за пределы памяти ( " << 0 << " - " << len - 1 << " )" << endl;
+			}
+
+
+		}
+
+
+		int get_len()
+		{
+
+			return len;
+
+		}
+
+		T* get_var()
+		{
+
+			return v;
+
+		}
+
+		void set_var(T a, int i)
+		{
+
+			v[i] = a;
+
+		}
+
+		void add_back(T a)
+		{
+
+			add_size(1);
+			v[len - 1] = a;
+
+		}
+
+		void add_top(T a)
+		{
+
+			insert(a, 0);
+
+		}
+
+
+		void add_size(int a)
+		{
+			int tmp_len = len + a;
+			int min_len = (len > len + a) ? len + a : len;
+			if (min_len >= 0)
+			{
+				Marray tmp(1);
+
+				tmp = *this;
+
+				delete[] v;
+				v = new T[tmp_len];
+
+				for (int i = 0; i < min_len; i++)
+					v[i] = tmp.v[i];
+				len = tmp_len;
+			}
+
+		}
+
+		void set_size(unsigned int a)
+		{
+
+			int min_len = (len > a) ? a : len;
+			Marray tmp(1);
+
+			tmp = *this;
+
+			delete[] v;
+			v = new T[a];
+
+			for (int i = 0; i < min_len; i++)
+				v[i] = tmp.v[i];
+			len = a;
+
+		}
+
+		void outsert(unsigned int a)
+		{
+
+			if (a < len)
+			{
+				Marray tmp(1);
+
+				tmp = *this;
+
+				delete[] v;
+				v = new T[len - 1];
+				for (int i = 0, j = 0; i < len; i++)
+				{
+					if (i != a)
+					{
+						v[j++] = tmp[i];
+					}
 
 				}
-
+				len--;
 
 
 			}
 
-			len++;
 		}
 
-	}
+		void insert(T c, unsigned int a)
+		{
+
+			if (a < len)
+			{
+				Marray tmp(1);
+
+				tmp = *this;
+
+				delete[] v;
+				v = new T[len + 1];
+				for (int i = 0, j = 0; i < len + 1; i++)
+				{
+					if (i == a)
+					{
+
+						v[i] = c;
+
+					}
+					else
+					{
+
+						v[i] = tmp[j];
+						j++;
+
+					}
 
 
 
-	//friend ostream& operator<<(ostream& cout, Marray<T>& a);
-	~Marray()
-	{
-		if (destroy)
-			delete[] v;
+				}
 
-	}
-};
+				len++;
+			}
 
+		}
+
+
+		void delete_if_destroy(Marray<T>* a)
+		{
+
+			if (a->destroy)
+				delete a;
+
+		}
+
+
+		//friend ostream& operator<<(ostream& cout, Marray<T>& a);
+		~Marray()
+		{
+			if (v)
+				delete[] v;
+
+		}
+
+
+		
+
+
+	};
+		
 
 //Перегрузка cout
 template<typename T>
@@ -750,6 +939,7 @@ std::ostream& operator << (std::ostream& cout, Marray<T>&a)
 
 		if (i < a.get_len() - 1)
 			cout << ", ";
+
 	}
 	cout << " )";
 	return cout;
@@ -764,6 +954,9 @@ std::ostream& operator << (std::ostream& cout, bool* a)
 		cout << "false";
 	return cout;
 }
+
+
+
 
 //Прототип меню
 template<class T>
@@ -859,24 +1052,16 @@ public:
 
 
 
-//Видаляє динамічний вказівник;
-template<typename T>
-static void pointer(T **point)
-{
-	*point = nullptr;
-	delete *point;
-}
+
 
 
 // Полегшує роботу з класом Write
-char *My_Mwrite(const char* text = "")
+std::string My_Mwrite(const char* text = "")
 {
 	Write *Buf = new Write;
-	char *string = new char;
+	std::string string;
 	Buf->write(&string, text);
-	Buf->Delete();
 	delete Buf;
-	pointer(&Buf);
 	return string;
 }
 
@@ -1036,6 +1221,44 @@ T string_to_number(char *string, int size = 0, const char* del = "")
 	return num;
 
 }
+
+
+void write_to_file(char* FileName, char* Content)
+{
+
+	std::fstream file;
+	file.open(FileName, std::ios::out);
+
+	file << Content;
+
+	file.close();
+
+}
+
+
+std::string read_from_file(char* FileName)
+{
+
+	std::string Content;
+	std::fstream file;
+	file.open(FileName, std::ios::in);
+	std::string tmp;
+	while (file >> tmp)
+	{
+		if(!Content.empty())
+			Content += ' ';
+		Content += tmp;
+
+	}
+
+	file.close();
+
+	return Content;
+
+}
+
+
+
 
 /*
 class Screen
